@@ -1,0 +1,1232 @@
+# ============================================================
+# SELF-SUPERVISED LEARNING FOR ANOMALY DETECTION
+# IN INDUSTRIAL SYSTEMS
+#
+# Educational Offline Project
+# ============================================================
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPRegressor
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix
+)
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+TOTAL_SAMPLES = 3000
+ANOMALY_RATIO = 0.15
+RANDOM_STATE = 42
+
+np.random.seed(RANDOM_STATE)
+
+
+# ============================================================
+# 1. GENERATE SYNTHETIC INDUSTRIAL SENSOR DATA
+# ============================================================
+
+def generate_industrial_data():
+
+    normal_samples = int(
+        TOTAL_SAMPLES * (1 - ANOMALY_RATIO)
+    )
+
+    anomaly_samples = (
+        TOTAL_SAMPLES - normal_samples
+    )
+
+    # --------------------------------------------------------
+    # NORMAL OPERATING DATA
+    # --------------------------------------------------------
+
+    temperature = np.random.normal(
+        70,
+        4,
+        normal_samples
+    )
+
+    vibration = np.random.normal(
+        0.35,
+        0.08,
+        normal_samples
+    )
+
+    pressure = np.random.normal(
+        100,
+        5,
+        normal_samples
+    )
+
+    motor_current = np.random.normal(
+        20,
+        2,
+        normal_samples
+    )
+
+    rotation_speed = np.random.normal(
+        1500,
+        70,
+        normal_samples
+    )
+
+    humidity = np.random.normal(
+        50,
+        5,
+        normal_samples
+    )
+
+    acoustic_level = np.random.normal(
+        40,
+        4,
+        normal_samples
+    )
+
+    # --------------------------------------------------------
+    # ANOMALOUS DATA
+    # --------------------------------------------------------
+
+    anomaly_temperature = np.random.normal(
+        95,
+        8,
+        anomaly_samples
+    )
+
+    anomaly_vibration = np.random.normal(
+        1.10,
+        0.20,
+        anomaly_samples
+    )
+
+    anomaly_pressure = np.random.normal(
+        125,
+        12,
+        anomaly_samples
+    )
+
+    anomaly_motor_current = np.random.normal(
+        32,
+        5,
+        anomaly_samples
+    )
+
+    anomaly_rotation_speed = np.random.normal(
+        1200,
+        180,
+        anomaly_samples
+    )
+
+    anomaly_humidity = np.random.normal(
+        75,
+        10,
+        anomaly_samples
+    )
+
+    anomaly_acoustic_level = np.random.normal(
+        70,
+        10,
+        anomaly_samples
+    )
+
+    # --------------------------------------------------------
+    # COMBINE NORMAL + ANOMALY DATA
+    # --------------------------------------------------------
+
+    data = pd.DataFrame({
+
+        "temperature": np.concatenate([
+            temperature,
+            anomaly_temperature
+        ]),
+
+        "vibration": np.concatenate([
+            vibration,
+            anomaly_vibration
+        ]),
+
+        "pressure": np.concatenate([
+            pressure,
+            anomaly_pressure
+        ]),
+
+        "motor_current": np.concatenate([
+            motor_current,
+            anomaly_motor_current
+        ]),
+
+        "rotation_speed": np.concatenate([
+            rotation_speed,
+            anomaly_rotation_speed
+        ]),
+
+        "humidity": np.concatenate([
+            humidity,
+            anomaly_humidity
+        ]),
+
+        "acoustic_level": np.concatenate([
+            acoustic_level,
+            anomaly_acoustic_level
+        ]),
+
+        "actual_status": np.concatenate([
+            np.zeros(normal_samples),
+            np.ones(anomaly_samples)
+        ])
+
+    })
+
+    # Shuffle data
+
+    data = data.sample(
+        frac=1,
+        random_state=RANDOM_STATE
+    ).reset_index(
+        drop=True
+    )
+
+    return data
+
+
+# ============================================================
+# 2. DISPLAY DATASET
+# ============================================================
+
+def display_dataset(data):
+
+    print("\n")
+    print("=" * 65)
+    print("INDUSTRIAL SENSOR DATA")
+    print("=" * 65)
+
+    print(
+        "\nTotal sensor records:",
+        len(data)
+    )
+
+    print(
+        "\nNormal records:",
+        int(
+            (data["actual_status"] == 0).sum()
+        )
+    )
+
+    print(
+        "Anomaly records:",
+        int(
+            (data["actual_status"] == 1).sum()
+        )
+    )
+
+    print(
+        "\nSample data:"
+    )
+
+    print(
+        data.head()
+    )
+
+
+# ============================================================
+# 3. PREPARE DATA
+# ============================================================
+
+def prepare_data(data):
+
+    features = [
+        "temperature",
+        "vibration",
+        "pressure",
+        "motor_current",
+        "rotation_speed",
+        "humidity",
+        "acoustic_level"
+    ]
+
+    X = data[
+        features
+    ]
+
+    y = data[
+        "actual_status"
+    ]
+
+    # --------------------------------------------------------
+    # IMPORTANT SELF-SUPERVISED IDEA
+    # --------------------------------------------------------
+    #
+    # The autoencoder is trained ONLY using normal samples.
+    #
+    # The anomaly labels are NOT used during training.
+    #
+    # --------------------------------------------------------
+
+    normal_data = X[
+        y == 0
+    ]
+
+    scaler = StandardScaler()
+
+    normal_scaled = scaler.fit_transform(
+        normal_data
+    )
+
+    all_scaled = scaler.transform(
+        X
+    )
+
+    return (
+        normal_scaled,
+        all_scaled,
+        y,
+        scaler,
+        features
+    )
+
+
+# ============================================================
+# 4. CREATE SELF-SUPERVISED AUTOENCODER
+# ============================================================
+
+def create_autoencoder():
+
+    model = MLPRegressor(
+
+        hidden_layer_sizes=(
+            16,
+            8,
+            16
+        ),
+
+        activation="relu",
+
+        solver="adam",
+
+        learning_rate_init=0.001,
+
+        max_iter=300,
+
+        random_state=RANDOM_STATE,
+
+        early_stopping=True,
+
+        validation_fraction=0.15,
+
+        verbose=False
+
+    )
+
+    return model
+
+
+# ============================================================
+# 5. TRAIN MODEL
+# ============================================================
+
+def train_model(
+    normal_data
+):
+
+    print("\n")
+    print("=" * 65)
+    print("SELF-SUPERVISED MODEL TRAINING")
+    print("=" * 65)
+
+    print(
+        "\nTraining only on normal operating data..."
+    )
+
+    model = create_autoencoder()
+
+    # --------------------------------------------------------
+    # Autoencoder learns:
+    #
+    # Input → compressed representation → reconstruction
+    #
+    # Normal patterns are reconstructed well.
+    # Anomalies usually produce larger reconstruction errors.
+    # --------------------------------------------------------
+
+    model.fit(
+        normal_data,
+        normal_data
+    )
+
+    print(
+        "\nTraining completed."
+    )
+
+    return model
+
+
+# ============================================================
+# 6. CALCULATE RECONSTRUCTION ERROR
+# ============================================================
+
+def calculate_reconstruction_error(
+    model,
+    data
+):
+
+    reconstructed = model.predict(
+        data
+    )
+
+    error = np.mean(
+        np.square(
+            data - reconstructed
+        ),
+        axis=1
+    )
+
+    return error
+
+
+# ============================================================
+# 7. DETERMINE ANOMALY THRESHOLD
+# ============================================================
+
+def calculate_threshold(
+    model,
+    normal_data
+):
+
+    normal_errors = calculate_reconstruction_error(
+        model,
+        normal_data
+    )
+
+    # --------------------------------------------------------
+    # 95th percentile threshold
+    # --------------------------------------------------------
+
+    threshold = np.percentile(
+        normal_errors,
+        95
+    )
+
+    print("\n")
+    print("=" * 65)
+    print("ANOMALY THRESHOLD")
+    print("=" * 65)
+
+    print(
+        f"\nThreshold: {threshold:.6f}"
+    )
+
+    print(
+        "\nRecords with reconstruction error"
+        " above this threshold are considered anomalous."
+    )
+
+    return threshold
+
+
+# ============================================================
+# 8. DETECT ANOMALIES
+# ============================================================
+
+def detect_anomalies(
+    errors,
+    threshold
+):
+
+    predictions = (
+        errors > threshold
+    ).astype(int)
+
+    return predictions
+
+
+# ============================================================
+# 9. EVALUATE MODEL
+# ============================================================
+
+def evaluate_model(
+    actual,
+    predicted
+):
+
+    accuracy = accuracy_score(
+        actual,
+        predicted
+    )
+
+    precision = precision_score(
+        actual,
+        predicted,
+        zero_division=0
+    )
+
+    recall = recall_score(
+        actual,
+        predicted,
+        zero_division=0
+    )
+
+    f1 = f1_score(
+        actual,
+        predicted,
+        zero_division=0
+    )
+
+    cm = confusion_matrix(
+        actual,
+        predicted
+    )
+
+    print("\n")
+    print("=" * 65)
+    print("ANOMALY DETECTION EVALUATION")
+    print("=" * 65)
+
+    print(
+        f"\nAccuracy  : {accuracy * 100:.2f}%"
+    )
+
+    print(
+        f"Precision : {precision * 100:.2f}%"
+    )
+
+    print(
+        f"Recall    : {recall * 100:.2f}%"
+    )
+
+    print(
+        f"F1 Score  : {f1 * 100:.2f}%"
+    )
+
+    print(
+        "\nConfusion Matrix:"
+    )
+
+    print(cm)
+
+    print(
+        "\n0 = Normal"
+    )
+
+    print(
+        "1 = Anomaly"
+    )
+
+    return cm
+
+
+# ============================================================
+# 10. PLOT SENSOR DATA
+# ============================================================
+
+def plot_sensor_data(
+    data,
+    predictions
+):
+
+    sample_count = min(
+        300,
+        len(data)
+    )
+
+    temperature = data[
+        "temperature"
+    ].values[:sample_count]
+
+    vibration = data[
+        "vibration"
+    ].values[:sample_count]
+
+    # --------------------------------------------------------
+    # Temperature
+    # --------------------------------------------------------
+
+    plt.figure(
+        figsize=(10, 5)
+    )
+
+    plt.plot(
+        temperature,
+        label="Temperature"
+    )
+
+    plt.axhline(
+        85,
+        linestyle="--",
+        label="Warning Level"
+    )
+
+    plt.title(
+        "Industrial Temperature Monitoring"
+    )
+
+    plt.xlabel(
+        "Sensor Record"
+    )
+
+    plt.ylabel(
+        "Temperature"
+    )
+
+    plt.legend()
+
+    plt.tight_layout()
+
+    plt.show()
+
+    # --------------------------------------------------------
+    # Vibration
+    # --------------------------------------------------------
+
+    plt.figure(
+        figsize=(10, 5)
+    )
+
+    plt.plot(
+        vibration,
+        label="Vibration"
+    )
+
+    plt.axhline(
+        0.75,
+        linestyle="--",
+        label="Warning Level"
+    )
+
+    plt.title(
+        "Industrial Vibration Monitoring"
+    )
+
+    plt.xlabel(
+        "Sensor Record"
+    )
+
+    plt.ylabel(
+        "Vibration"
+    )
+
+    plt.legend()
+
+    plt.tight_layout()
+
+    plt.show()
+
+
+# ============================================================
+# 11. PLOT RECONSTRUCTION ERROR
+# ============================================================
+
+def plot_reconstruction_error(
+    errors,
+    threshold
+):
+
+    sample_count = min(
+        300,
+        len(errors)
+    )
+
+    plt.figure(
+        figsize=(10, 5)
+    )
+
+    plt.plot(
+        errors[:sample_count],
+        label="Reconstruction Error"
+    )
+
+    plt.axhline(
+        threshold,
+        linestyle="--",
+        label="Anomaly Threshold"
+    )
+
+    plt.title(
+        "Self-Supervised Anomaly Detection"
+    )
+
+    plt.xlabel(
+        "Sensor Record"
+    )
+
+    plt.ylabel(
+        "Reconstruction Error"
+    )
+
+    plt.legend()
+
+    plt.tight_layout()
+
+    plt.show()
+
+
+# ============================================================
+# 12. DISPLAY DETECTED ANOMALIES
+# ============================================================
+
+def display_anomalies(
+    data,
+    errors,
+    predictions
+):
+
+    result = data.copy()
+
+    result["reconstruction_error"] = errors
+
+    result["predicted_status"] = predictions
+
+    anomalies = result[
+        result["predicted_status"] == 1
+    ]
+
+    print("\n")
+    print("=" * 65)
+    print("DETECTED ANOMALIES")
+    print("=" * 65)
+
+    print(
+        "\nTotal detected anomalies:",
+        len(anomalies)
+    )
+
+    if len(anomalies) > 0:
+
+        print(
+            "\nFirst detected anomalies:"
+        )
+
+        print(
+            anomalies[
+                [
+                    "temperature",
+                    "vibration",
+                    "pressure",
+                    "motor_current",
+                    "rotation_speed",
+                    "humidity",
+                    "acoustic_level",
+                    "reconstruction_error"
+                ]
+            ].head(10)
+        )
+
+
+# ============================================================
+# 13. FEATURE DEVIATION ANALYSIS
+# ============================================================
+
+def feature_analysis(
+    data
+):
+
+    print("\n")
+    print("=" * 65)
+    print("NORMAL SENSOR OPERATING RANGES")
+    print("=" * 65)
+
+    features = [
+        "temperature",
+        "vibration",
+        "pressure",
+        "motor_current",
+        "rotation_speed",
+        "humidity",
+        "acoustic_level"
+    ]
+
+    for feature in features:
+
+        mean_value = data[
+            feature
+        ].mean()
+
+        std_value = data[
+            feature
+        ].std()
+
+        print(
+            f"\n{feature}:"
+        )
+
+        print(
+            f"  Mean : {mean_value:.2f}"
+        )
+
+        print(
+            f"  Std  : {std_value:.2f}"
+        )
+
+
+# ============================================================
+# 14. INTERACTIVE SENSOR PREDICTION
+# ============================================================
+
+def interactive_prediction(
+    model,
+    scaler,
+    threshold
+):
+
+    print("\n")
+    print("=" * 65)
+    print("INDUSTRIAL MACHINE HEALTH CHECK")
+    print("=" * 65)
+
+    print(
+        "\nEnter current machine sensor values."
+    )
+
+    try:
+
+        temperature = float(
+            input(
+                "Temperature: "
+            )
+        )
+
+        vibration = float(
+            input(
+                "Vibration: "
+            )
+        )
+
+        pressure = float(
+            input(
+                "Pressure: "
+            )
+        )
+
+        motor_current = float(
+            input(
+                "Motor Current: "
+            )
+        )
+
+        rotation_speed = float(
+            input(
+                "Rotation Speed: "
+            )
+        )
+
+        humidity = float(
+            input(
+                "Humidity: "
+            )
+        )
+
+        acoustic_level = float(
+            input(
+                "Acoustic Level: "
+            )
+        )
+
+    except ValueError:
+
+        print(
+            "\nInvalid input."
+        )
+
+        return
+
+    values = pd.DataFrame(
+
+        [[
+            temperature,
+            vibration,
+            pressure,
+            motor_current,
+            rotation_speed,
+            humidity,
+            acoustic_level
+        ]],
+
+        columns=[
+            "temperature",
+            "vibration",
+            "pressure",
+            "motor_current",
+            "rotation_speed",
+            "humidity",
+            "acoustic_level"
+        ]
+    )
+
+    scaled_values = scaler.transform(
+        values
+    )
+
+    reconstruction = model.predict(
+        scaled_values
+    )
+
+    error = np.mean(
+        np.square(
+            scaled_values -
+            reconstruction
+        )
+    )
+
+    print("\n")
+    print("=" * 65)
+    print("MACHINE CONDITION RESULT")
+    print("=" * 65)
+
+    print(
+        f"\nReconstruction Error: "
+        f"{error:.6f}"
+    )
+
+    print(
+        f"Anomaly Threshold: "
+        f"{threshold:.6f}"
+    )
+
+    if error > threshold:
+
+        print(
+            "\nStatus: ANOMALY DETECTED"
+        )
+
+        print(
+            "Recommendation: Inspect the machine."
+        )
+
+    else:
+
+        print(
+            "\nStatus: NORMAL"
+        )
+
+        print(
+            "Machine appears to be operating normally."
+        )
+
+
+# ============================================================
+# 15. EXAMPLE TEST CASES
+# ============================================================
+
+def demonstrate_predictions(
+    model,
+    scaler,
+    threshold
+):
+
+    print("\n")
+    print("=" * 65)
+    print("DEMO MACHINE PREDICTIONS")
+    print("=" * 65)
+
+    test_cases = {
+
+        "Normal Machine": [
+            70,
+            0.35,
+            100,
+            20,
+            1500,
+            50,
+            40
+        ],
+
+        "Overheating Machine": [
+            102,
+            1.20,
+            130,
+            34,
+            1150,
+            80,
+            75
+        ],
+
+        "High Vibration Machine": [
+            88,
+            1.40,
+            118,
+            30,
+            1250,
+            70,
+            68
+        ]
+
+    }
+
+    columns = [
+        "temperature",
+        "vibration",
+        "pressure",
+        "motor_current",
+        "rotation_speed",
+        "humidity",
+        "acoustic_level"
+    ]
+
+    for name, values in test_cases.items():
+
+        machine = pd.DataFrame(
+            [values],
+            columns=columns
+        )
+
+        scaled = scaler.transform(
+            machine
+        )
+
+        reconstructed = model.predict(
+            scaled
+        )
+
+        error = np.mean(
+            np.square(
+                scaled -
+                reconstructed
+            )
+        )
+
+        if error > threshold:
+
+            status = "ANOMALY"
+
+        else:
+
+            status = "NORMAL"
+
+        print(
+            f"\n{name}"
+        )
+
+        print(
+            f"Reconstruction Error: "
+            f"{error:.6f}"
+        )
+
+        print(
+            f"Prediction: {status}"
+        )
+
+
+# ============================================================
+# 16. MAIN PROGRAM
+# ============================================================
+
+def main():
+
+    print("\n")
+    print("=" * 65)
+
+    print(
+        "SELF-SUPERVISED LEARNING FOR"
+    )
+
+    print(
+        "ANOMALY DETECTION IN INDUSTRIAL SYSTEMS"
+    )
+
+    print("=" * 65)
+
+    print(
+        "\nEducational Offline Project"
+    )
+
+    # --------------------------------------------------------
+    # Generate data
+    # --------------------------------------------------------
+
+    print(
+        "\nGenerating synthetic industrial sensor data..."
+    )
+
+    data = generate_industrial_data()
+
+    display_dataset(
+        data
+    )
+
+    # --------------------------------------------------------
+    # Feature information
+    # --------------------------------------------------------
+
+    feature_analysis(
+        data
+    )
+
+    # --------------------------------------------------------
+    # Prepare data
+    # --------------------------------------------------------
+
+    (
+        normal_data,
+        all_data,
+        actual_labels,
+        scaler,
+        features
+    ) = prepare_data(
+        data
+    )
+
+    # --------------------------------------------------------
+    # Train self-supervised model
+    # --------------------------------------------------------
+
+    model = train_model(
+        normal_data
+    )
+
+    # --------------------------------------------------------
+    # Calculate threshold
+    # --------------------------------------------------------
+
+    threshold = calculate_threshold(
+        model,
+        normal_data
+    )
+
+    # --------------------------------------------------------
+    # Calculate reconstruction errors
+    # --------------------------------------------------------
+
+    errors = calculate_reconstruction_error(
+        model,
+        all_data
+    )
+
+    # --------------------------------------------------------
+    # Detect anomalies
+    # --------------------------------------------------------
+
+    predictions = detect_anomalies(
+        errors,
+        threshold
+    )
+
+    # --------------------------------------------------------
+    # Evaluate
+    # --------------------------------------------------------
+
+    cm = evaluate_model(
+        actual_labels,
+        predictions
+    )
+
+    # --------------------------------------------------------
+    # Display anomalies
+    # --------------------------------------------------------
+
+    display_anomalies(
+        data,
+        errors,
+        predictions
+    )
+
+    # --------------------------------------------------------
+    # Visualizations
+    # --------------------------------------------------------
+
+    plot_reconstruction_error(
+        errors,
+        threshold
+    )
+
+    plot_sensor_data(
+        data,
+        predictions
+    )
+
+    # --------------------------------------------------------
+    # Demo predictions
+    # --------------------------------------------------------
+
+    demonstrate_predictions(
+        model,
+        scaler,
+        threshold
+    )
+
+    # --------------------------------------------------------
+    # Interactive prediction
+    # --------------------------------------------------------
+
+    interactive_prediction(
+        model,
+        scaler,
+        threshold
+    )
+
+    # --------------------------------------------------------
+    # Completion
+    # --------------------------------------------------------
+
+    print("\n")
+    print("=" * 65)
+
+    print(
+        "PROJECT COMPLETED SUCCESSFULLY"
+    )
+
+    print("=" * 65)
+
+    print(
+        "\nThe system performed:"
+    )
+
+    print(
+        "✓ Industrial sensor data generation"
+    )
+
+    print(
+        "✓ Normal operating pattern learning"
+    )
+
+    print(
+        "✓ Self-supervised autoencoder training"
+    )
+
+    print(
+        "✓ Reconstruction error calculation"
+    )
+
+    print(
+        "✓ Automatic anomaly threshold detection"
+    )
+
+    print(
+        "✓ Industrial anomaly detection"
+    )
+
+    print(
+        "✓ Model evaluation"
+    )
+
+    print(
+        "✓ Sensor visualization"
+    )
+
+    print(
+        "✓ Interactive machine health prediction"
+    )
+
+    print(
+        "\nImportant:"
+    )
+
+    print(
+        "This project uses synthetic data "
+        "for educational purposes."
+    )
+
+
+# ============================================================
+# START PROGRAM
+# ============================================================
+
+if __name__ == "__main__":
+
+    main()
